@@ -1,0 +1,16 @@
+api_version = "2024-10"
+
+[[extensions]]
+name = "payment-customization"
+handle = "payment-customization"
+type = "function"
+description = "Hides payment methods based on collections"
+
+[extensions.targeting.payment-customization]
+target = "purchase.payment-customization.run"
+input_query = "src/run.graphql"
+export = "run"
+
+[extensions.build]
+command = "npm run build"
+path = "dist/function.wasm"

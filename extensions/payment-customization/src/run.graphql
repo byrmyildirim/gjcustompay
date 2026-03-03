@@ -1,0 +1,27 @@
+query RunInput($collectionIds: [ID!]) {
+  cart {
+    lines {
+      quantity
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          product {
+            inCollections(ids: $collectionIds) {
+              collectionId
+              isMember
+            }
+          }
+        }
+      }
+    }
+  }
+  paymentMethods {
+    id
+    name
+  }
+  paymentCustomization {
+    metafield(namespace: "gj-custom-pay", key: "configuration") {
+      value
+    }
+  }
+}
