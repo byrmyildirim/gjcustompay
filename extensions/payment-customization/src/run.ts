@@ -13,39 +13,63 @@ export function run(input: RunInput): FunctionRunResult {
         input.paymentCustomization?.metafield?.value ?? "{}"
     );
 
-    // Eğer konfigürasyon yoksa veya aktif değilse işlem yapma
-    if (!configuration.collectionId || !configuration.paymentMethodName) {
-        return NO_CHANGES;
-    }
+    const nutritionCollectionIds = configuration.nutritionCollectionIds || [];
+    const sportsCollectionIds = configuration.sportsCollectionIds || [];
+    const iyzicoMethodName = configuration.iyzicoMethodName || "iyzico";
+    const paytrMethodName = configuration.paytrMethodName || "PayTR";
 
-    // Belirlenen koleksiyonda olan bir ürün var mı kontrol et
-    const hasRestrictedProduct = input.cart.lines.some((line) => {
+    let hasNutrition = false;
+    let hasSports = false;
+
+    for (const line of input.cart.lines) {
         if (line.merchandise.__typename === "ProductVariant") {
-            // Not: run.graphql'deki inCollections(ids: $collectionIds) kısmı 
-            // burada listelenir. isMember olan varsa kısıtlı ürün vardır.
-            return line.merchandise.product.inCollections.some((c) => c.isMember);
-        }
-        return false;
-    });
+            const productCollections = (line.merchandise.product.collections.edges || []).map(
+                (edge: any) => edge.node.id
+            );
 
-    if (!hasRestrictedProduct) {
-        return NO_CHANGES;
+            if (productCollections.some((id: string) => nutritionCollectionIds.includes(id))) {
+                hasNutrition = true;
+            }
+            if (productCollections.some((id: string) => sportsCollectionIds.includes(id))) {
+                hasSports = true;
+            }
+        }
     }
 
-    // Eğer kısıtlı ürün varsa, konfigürasyonda belirtilen POS'u gizle
-    const hideOperations = input.paymentMethods
-        .filter((method) => {
-            const name = method.name.toLowerCase();
-            // Kullanıcının belirlediği mağaza adını (taksitli olanı) içeriyor mu?
-            return name.includes(configuration.paymentMethodName.toLowerCase());
-        })
-        .map((method) => ({
-            hide: {
-                paymentMethodId: method.id,
-            },
-        }));
+    const operations = [];
+
+    // Rule 1 & 3: Eğer sepette Beslenme ürünü varsa (tek başına veya sporla karma), 
+    // PayTR (Taksitli) gizlenmeli, sadece tek çekim (İyzico) kalmalı.
+    if (hasNutrition) {
+        const paytrMethods = input.paymentMethods.filter((method) =>
+            method.name.toLowerCase().includes(paytrMethodName.toLowerCase())
+        );
+
+        for (const method of paytrMethods) {
+            operations.push({
+                hide: {
+                    paymentMethodId: method.id,
+                },
+            });
+        }
+    }
+    // Rule 2: Eğer SADECE spor ürünleri varsa, PayTR (Taksitli) aktif olmalı.
+    // Kullanıcının isteğine göre bu durumda İyzico'yu gizleyebiliriz.
+    else if (hasSports) {
+        const iyzicoMethods = input.paymentMethods.filter((method) =>
+            method.name.toLowerCase().includes(iyzicoMethodName.toLowerCase())
+        );
+
+        for (const method of iyzicoMethods) {
+            operations.push({
+                hide: {
+                    paymentMethodId: method.id,
+                },
+            });
+        }
+    }
 
     return {
-        operations: hideOperations,
+        operations,
     };
 }

@@ -3,6 +3,9 @@ api_version = "2024-10"
 [[extensions]]
 name = "payment-customization"
 handle = "payment-customization"
+
+uid = "4f8a281d-8599-ed4f-dd32-1297c2872b96939fbf00"
+
 type = "function"
 description = "Hides payment methods based on collections"
 

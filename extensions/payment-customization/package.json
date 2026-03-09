@@ -1,0 +1,13 @@
+{
+    "name": "payment-customization",
+    "version": "1.0.0",
+    "devDependencies": {
+        "@shopify/shopify_function": "^0.0.3",
+        "@types/node": "^22.2.0",
+        "typescript": "^5.2.2"
+    },
+    "scripts": {
+        "build": "npx shopify app function build",
+        "typegen": "npx shopify app function typegen"
+    }
+}

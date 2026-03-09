@@ -1,4 +1,4 @@
-query RunInput($collectionIds: [ID!]) {
+query RunInput {
   cart {
     lines {
       quantity
@@ -6,9 +6,12 @@ query RunInput($collectionIds: [ID!]) {
         __typename
         ... on ProductVariant {
           product {
-            inCollections(ids: $collectionIds) {
-              collectionId
-              isMember
+            collections(first: 10) {
+              edges {
+                node {
+                  id
+                }
+              }
             }
           }
         }
