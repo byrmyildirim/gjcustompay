@@ -1,4 +1,5 @@
-import { useLoaderData, useNavigate } from "@remix-run/react";
+import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
+import { useLoaderData, useNavigate, useFetcher } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -22,22 +23,20 @@ import {
   CheckCircleIcon,
   AlertBubbleIcon
 } from "@shopify/polaris-icons";
-import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
-
-  // Mevcut Payment Customization'ları getir
   const response = await admin.graphql(
     `#graphql
     query GetCustomizations {
-      paymentCustomizations(first: 10) {
+      paymentCustomizations(first: 20) {
         edges {
           node {
             id
             title
             enabled
+            functionId
             metafield(namespace: "gj-custom-pay", key: "configuration") {
               value
             }
@@ -46,16 +45,47 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     }`
   );
-
   const responseJson = await response.json();
   const customizations = responseJson.data?.paymentCustomizations?.edges || [];
-
   return json({ customizations });
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { admin } = await authenticate.admin(request);
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+  const id = formData.get("id") as string;
+  if (intent === "toggle") {
+    const enabled = formData.get("enabled") === "true";
+    await admin.graphql(
+      `#graphql
+      mutation UpdateCustomization($id: ID!, $enabled: Boolean!) {
+        paymentCustomizationUpdate(id: $id, paymentCustomization: { enabled: $enabled }) {
+          paymentCustomization { id }
+          userErrors { message }
+        }
+      }`,
+      { variables: { id, enabled } }
+    );
+  } else if (intent === "delete") {
+    await admin.graphql(
+      `#graphql
+      mutation DeleteCustomization($id: ID!) {
+        paymentCustomizationDelete(id: $id) {
+          deletedId
+          userErrors { message }
+        }
+      }`,
+      { variables: { id } }
+    );
+  }
+  return json({ success: true });
 };
 
 export default function Index() {
   const { customizations } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
+  const fetcher = useFetcher();
 
   const resourceName = {
     singular: "Ödeme Kuralı",
@@ -84,8 +114,33 @@ export default function Index() {
           <InlineStack gap="200">
             <Button
               icon={EditIcon}
-              onClick={() => navigate("/app/configuration")}
+              onClick={() => navigate(`/app/configuration/${node.id.split("/").pop()}`)}
               variant="tertiary"
+            />
+            <Button
+              icon={node.enabled ? AlertBubbleIcon : CheckCircleIcon}
+              onClick={() => {
+                const formData = new FormData();
+                formData.append("intent", "toggle");
+                formData.append("id", node.id);
+                formData.append("enabled", String(!node.enabled));
+                fetcher.submit(formData, { method: "POST" });
+              }}
+              variant="tertiary"
+              tone={node.enabled ? "critical" : undefined}
+            />
+            <Button
+              icon={DeleteIcon}
+              onClick={() => {
+                if (confirm("Bu kuralı silmek istediğinizden emin misiniz?")) {
+                  const formData = new FormData();
+                  formData.append("intent", "delete");
+                  formData.append("id", node.id);
+                  fetcher.submit(formData, { method: "POST" });
+                }
+              }}
+              variant="tertiary"
+              tone="critical"
             />
           </InlineStack>
         </IndexTable.Cell>
@@ -123,9 +178,9 @@ export default function Index() {
                       <Text as="h2" variant="headingSm">Yeni Kural Ekle</Text>
                       <Button
                         variant="plain"
-                        onClick={() => window.open(`shopify:admin/settings/payments/customizations`, "_blank")}
+                        onClick={() => navigate("/app/configuration/new")}
                       >
-                        Ödeme Özelleştirmesi Oluştur
+                        Yeni Ödeme Kuralı Oluştur
                       </Button>
                     </BlockStack>
                   </Card>
