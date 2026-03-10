@@ -1,8 +1,7 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
+import type { LoaderFunctionArgs } from "@remix-run/node";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-    await authenticate.admin(request);
-    return redirect("/app/configuration/new");
+    // /app/configuration adresine gelindiğinde ana sayfaya (Dashboard) yönlendirir
+    return redirect("/app");
 };

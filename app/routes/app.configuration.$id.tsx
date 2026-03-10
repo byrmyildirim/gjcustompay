@@ -23,43 +23,57 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     let customization = null;
     let functionId = null;
 
-    // Tüm fonksiyon tanımlarını getir (yeni oluştururken lazım olacak)
-    const functionResponse = await admin.graphql(
-        `#graphql
-        query GetFunctions {
-            paymentCustomizationDefinitions(first: 10) {
-                edges {
-                    node {
-                        id
-                        functionId
-                        title
-                    }
-                }
-            }
-        }`
-    );
-    const functionJson = await functionResponse.json();
-    functionId = functionJson.data?.paymentCustomizationDefinitions?.edges?.[0]?.node?.functionId;
-
-    if (id && id !== "new") {
-        const response = await admin.graphql(
+    try {
+        // Tüm fonksiyon tanımlarını getir (yeni oluştururken lazım olacak)
+        const functionResponse = await admin.graphql(
             `#graphql
-            query GetCustomization($id: ID!) {
-                paymentCustomization(id: $id) {
-                    id
-                    title
-                    enabled
-                    metafield(namespace: "gj-custom-pay", key: "configuration") {
-                        id
-                        value
+            query GetFunctions {
+                paymentCustomizationDefinitions(first: 10) {
+                    edges {
+                        node {
+                            id
+                            functionId
+                            title
+                        }
                     }
                 }
-            }`,
-            { variables: { id: `gid://shopify/PaymentCustomization/${id}` } }
+            }`
         );
+        const functionJson = await functionResponse.json();
 
-        const responseJson = await response.json();
-        customization = responseJson.data?.paymentCustomization;
+        if (functionJson.errors) {
+            console.error("GraphQL Errors (Functions):", JSON.stringify(functionJson.errors, null, 2));
+        }
+
+        functionId = functionJson.data?.paymentCustomizationDefinitions?.edges?.[0]?.node?.functionId;
+
+        if (id && id !== "new") {
+            const response = await admin.graphql(
+                `#graphql
+                query GetCustomization($id: ID!) {
+                    paymentCustomization(id: $id) {
+                        id
+                        title
+                        enabled
+                        metafield(namespace: "gj-custom-pay", key: "configuration") {
+                            id
+                            value
+                        }
+                    }
+                }`,
+                { variables: { id: `gid://shopify/PaymentCustomization/${id}` } }
+            );
+
+            const responseJson = await response.json();
+
+            if (responseJson.errors) {
+                console.error("GraphQL Errors (Customization):", JSON.stringify(responseJson.errors, null, 2));
+            }
+
+            customization = responseJson.data?.paymentCustomization;
+        }
+    } catch (error) {
+        console.error("Loader Error:", error);
     }
 
     let existingConfig = {
@@ -241,58 +255,74 @@ export default function ConfigurationEditPage() {
                                 label="Kural Başlığı"
                                 value={title}
                                 onChange={setTitle}
-                                helpText="Örn: Beslenme Kısıtlaması"
+                                helpText="Örn: Koleksiyon Bazlı Ödeme Kuralları"
                                 autoComplete="off"
                             />
 
-                            <BlockStack gap="200">
-                                <Text as="p" variant="bodyMd">
-                                    <b>Beslenme Koleksiyonları:</b> (Sadece Tek Çekim uygulanacaklar)
+                            <Banner tone="info">
+                                <Text as="p">
+                                    Bu kural ile; <b>Beslenme</b> ürünleri için sadece <b>İyzico (Tek Çekim)</b>,
+                                    <b>Spor</b> ürünleri için ise sadece <b>PayTR (Taksitli)</b> gösterilecektir.
+                                    Karma sepetlerde <b>Tek Çekim</b> zorunlu tutulacaktır.
                                 </Text>
-                                <Button onClick={selectNutrition}>
-                                    {nutritionCollections.length > 0 ? `${nutritionCollections.length} Koleksiyon Seçildi` : "Koleksiyon Seç"}
-                                </Button>
-                                {nutritionCollections.length > 0 && (
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                        Seçili ID'ler: {nutritionCollections.map(c => c.id.split("/").pop()).join(", ")}
-                                    </Text>
-                                )}
+                            </Banner>
+
+                            <BlockStack gap="400">
+                                <Card>
+                                    <BlockStack gap="200">
+                                        <Text as="h3" variant="headingSm">1. Grup: Beslenme / Tek Çekim</Text>
+                                        <Text as="p" variant="bodyMd" tone="subdued">
+                                            Bu koleksiyonlardan ürün sepetlendiğinde Taksitli (PayTR) ödeme gizlenir.
+                                        </Text>
+                                        <Button onClick={selectNutrition}>
+                                            {nutritionCollections.length > 0 ? `${nutritionCollections.length} Koleksiyon Seçildi` : "Beslenme Koleksiyonlarını Seç"}
+                                        </Button>
+                                        {nutritionCollections.length > 0 && (
+                                            <Text as="p" variant="bodySm" tone="success">
+                                                Seçili: {nutritionCollections.map(c => c.title || c.id.split("/").pop()).join(", ")}
+                                            </Text>
+                                        )}
+                                        <TextField
+                                            label="İyzico (Tek Çekim) Metod Adı"
+                                            value={iyzicoMethodName}
+                                            onChange={setIyzicoMethodName}
+                                            helpText="Ödeme adımında görünen tam adı veya bir kısmını yazın."
+                                            autoComplete="off"
+                                        />
+                                    </BlockStack>
+                                </Card>
+
+                                <Card>
+                                    <BlockStack gap="200">
+                                        <Text as="h3" variant="headingSm">2. Grup: Spor / Taksitli</Text>
+                                        <Text as="p" variant="bodyMd" tone="subdued">
+                                            Bu koleksiyonlardan ürün sepetlendiğinde (ve beslenme yoksa) Tek Çekim (İyzico) gizlenir.
+                                        </Text>
+                                        <Button onClick={selectSports}>
+                                            {sportsCollections.length > 0 ? `${sportsCollections.length} Koleksiyon Seçildi` : "Spor Koleksiyonlarını Seç"}
+                                        </Button>
+                                        {sportsCollections.length > 0 && (
+                                            <Text as="p" variant="bodySm" tone="success">
+                                                Seçili: {sportsCollections.map(c => c.title || c.id.split("/").pop()).join(", ")}
+                                            </Text>
+                                        )}
+                                        <TextField
+                                            label="PayTR (Taksitli) Metod Adı"
+                                            value={paytrMethodName}
+                                            onChange={setPaytrMethodName}
+                                            helpText="Ödeme adımında görünen tam adı veya bir kısmını yazın."
+                                            autoComplete="off"
+                                        />
+                                    </BlockStack>
+                                </Card>
                             </BlockStack>
-
-                            <BlockStack gap="200">
-                                <Text as="p" variant="bodyMd">
-                                    <b>Spor Koleksiyonları:</b> (Taksitli uygulanabilecekler)
-                                </Text>
-                                <Button onClick={selectSports}>
-                                    {sportsCollections.length > 0 ? `${sportsCollections.length} Koleksiyon Seçildi` : "Koleksiyon Seç"}
-                                </Button>
-                                {sportsCollections.length > 0 && (
-                                    <Text as="p" variant="bodySm" tone="subdued">
-                                        Seçili ID'ler: {sportsCollections.map(c => c.id.split("/").pop()).join(", ")}
-                                    </Text>
-                                )}
-                            </BlockStack>
-
-                            <TextField
-                                label="PayTR Ödeme Yöntemi Adı (Taksitli)"
-                                value={paytrMethodName}
-                                onChange={setPaytrMethodName}
-                                autoComplete="off"
-                            />
-
-                            <TextField
-                                label="İyzico Ödeme Yöntemi Adı (Tek Çekim)"
-                                value={iyzicoMethodName}
-                                onChange={setIyzicoMethodName}
-                                autoComplete="off"
-                            />
                         </BlockStack>
                     </Card>
                 </Layout.Section>
                 <Layout.Section>
                     <PageActions
                         primaryAction={{
-                            content: "Kuralı Kaydet",
+                            content: "Ayarları ve Kuralları Kaydet",
                             onAction: handleSave,
                             loading: fetcher.state === "submitting"
                         }}
