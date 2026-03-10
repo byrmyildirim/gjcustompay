@@ -23,54 +23,35 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     let customization = null;
     let functionId = null;
 
+    // Mevcut özelleştirmelerden functionId'yi al (varsa)
     try {
-        // Tüm fonksiyon tanımlarını getir (yeni oluştururken lazım olacak)
-        const functionResponse = await admin.graphql(
+        const existingResponse = await admin.graphql(
             `#graphql
-            query GetFunctions {
-                paymentCustomizationDefinitions(first: 10) {
+            query GetExistingCustomizations {
+                paymentCustomizations(first: 5) {
                     edges {
                         node {
                             id
-                            functionId
                             title
+                            enabled
+                            functionId
                         }
                     }
                 }
             }`
-        ).catch(e => {
-            console.error("GraphQL request failed for definitions:", e);
-            return null;
-        });
-
-        if (functionResponse) {
-            const functionJson = await functionResponse.json();
-            if (functionJson.data?.paymentCustomizationDefinitions?.edges?.length > 0) {
-                functionId = functionJson.data.paymentCustomizationDefinitions.edges[0].node.functionId;
-            } else if (functionJson.errors) {
-                console.error("GraphQL Errors (Functions):", JSON.stringify(functionJson.errors, null, 2));
-            }
+        );
+        const existingJson = await existingResponse.json();
+        const firstNode = existingJson.data?.paymentCustomizations?.edges?.[0]?.node;
+        if (firstNode) {
+            functionId = firstNode.functionId;
         }
+    } catch (e) {
+        console.error("Could not fetch existing customizations for functionId:", e);
+    }
 
-        // Eğer hala bulunamadıysa mevcut özelleştirmelerden birini kontrol edelim (fallback)
-        if (!functionId) {
-            const fallbackResponse = await admin.graphql(
-                `#graphql
-                query GetExistingFunctionId {
-                    paymentCustomizations(first: 1) {
-                        edges {
-                            node {
-                                functionId
-                            }
-                        }
-                    }
-                }`
-            );
-            const fallbackJson = await fallbackResponse.json();
-            functionId = fallbackJson.data?.paymentCustomizations?.edges?.[0]?.node?.functionId;
-        }
-
-        if (id && id !== "new") {
+    // Belirli bir kuralı düzenlemek istiyorsak detayını getir
+    if (id && id !== "new") {
+        try {
             const response = await admin.graphql(
                 `#graphql
                 query GetCustomization($id: ID!) {
@@ -78,6 +59,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
                         id
                         title
                         enabled
+                        functionId
                         metafield(namespace: "gj-custom-pay", key: "configuration") {
                             id
                             value
@@ -86,12 +68,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
                 }`,
                 { variables: { id: `gid://shopify/PaymentCustomization/${id}` } }
             );
-
             const responseJson = await response.json();
             customization = responseJson.data?.paymentCustomization;
+            if (customization?.functionId) {
+                functionId = customization.functionId;
+            }
+        } catch (e) {
+            console.error("Could not fetch customization details:", e);
         }
-    } catch (error) {
-        console.error("Loader Exception Handled:", error);
     }
 
     let existingConfig = {
