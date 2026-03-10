@@ -39,6 +39,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         );
         const appJson = (await appResponse.json()) as any;
         const functions = appJson.data?.shopifyFunctions?.nodes || [];
+        console.log("Fetched app functions:", JSON.stringify(functions, null, 2));
+
         // Bu uygulamanın sahip olduğu payment-customization tipindeki ilk function'ı alalım
         const funcNode = functions.find((f: any) => f.apiType === "payment_customization");
         if (funcNode) {
