@@ -38,18 +38,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
             }`
         );
         const appJson = (await appResponse.json()) as any;
-        const functions = appJson.data?.shopifyFunctions?.nodes || [];
-        console.log("Fetched app functions:", JSON.stringify(functions, null, 2));
+        
+        if (appJson.errors) {
+            console.error("GraphQL Errors in Loader:", JSON.stringify(appJson.errors, null, 2));
+        }
 
-        // Bu uygulamanın sahip olduğu payment-customization tipindeki ilk function'ı alalım
-        const funcNode = functions.find((f: any) => f.apiType === "payment_customization");
+        const functions = appJson.data?.shopifyFunctions?.nodes || [];
+        console.log("DEBUG: All App Functions Found:", JSON.stringify(functions, null, 2));
+
+        // Bu uygulamanın sahip olduğu payment-customization tipindeki ilk function'ı alalım (Case-insensitive)
+        const funcNode = functions.find((f: any) => 
+            f.apiType?.toLowerCase() === "payment_customization" || 
+            f.apiType?.toLowerCase() === "payment-customization"
+        );
+
         if (funcNode) {
-            // Shopify Function ID usually needs the UUID part or the full GID depending on implementation
-            // But paymentCustomizationCreate mutation expects the UUID for the 'functionId' field
             functionId = funcNode.id.split("/").pop();
+            console.log("DEBUG: Matching Function Found! ID:", functionId);
+        } else {
+            console.warn("DEBUG: No Payment Customization Function found in this store!");
         }
     } catch (e) {
-        console.error("Could not fetch app functions:", e);
+        console.error("Could not fetch app functions via loader:", e);
     }
 
     // 2. Eğer id "new" değilse, kural detaylarını getir
