@@ -38,14 +38,37 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
                     }
                 }
             }`
-        );
-        const functionJson = await functionResponse.json();
+        ).catch(e => {
+            console.error("GraphQL request failed for definitions:", e);
+            return null;
+        });
 
-        if (functionJson.errors) {
-            console.error("GraphQL Errors (Functions):", JSON.stringify(functionJson.errors, null, 2));
+        if (functionResponse) {
+            const functionJson = await functionResponse.json();
+            if (functionJson.data?.paymentCustomizationDefinitions?.edges?.length > 0) {
+                functionId = functionJson.data.paymentCustomizationDefinitions.edges[0].node.functionId;
+            } else if (functionJson.errors) {
+                console.error("GraphQL Errors (Functions):", JSON.stringify(functionJson.errors, null, 2));
+            }
         }
 
-        functionId = functionJson.data?.paymentCustomizationDefinitions?.edges?.[0]?.node?.functionId;
+        // Eğer hala bulunamadıysa mevcut özelleştirmelerden birini kontrol edelim (fallback)
+        if (!functionId) {
+            const fallbackResponse = await admin.graphql(
+                `#graphql
+                query GetExistingFunctionId {
+                    paymentCustomizations(first: 1) {
+                        edges {
+                            node {
+                                functionId
+                            }
+                        }
+                    }
+                }`
+            );
+            const fallbackJson = await fallbackResponse.json();
+            functionId = fallbackJson.data?.paymentCustomizations?.edges?.[0]?.node?.functionId;
+        }
 
         if (id && id !== "new") {
             const response = await admin.graphql(
@@ -65,15 +88,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
             );
 
             const responseJson = await response.json();
-
-            if (responseJson.errors) {
-                console.error("GraphQL Errors (Customization):", JSON.stringify(responseJson.errors, null, 2));
-            }
-
             customization = responseJson.data?.paymentCustomization;
         }
     } catch (error) {
-        console.error("Loader Error:", error);
+        console.error("Loader Exception Handled:", error);
     }
 
     let existingConfig = {
