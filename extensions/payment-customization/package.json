@@ -1,8 +1,10 @@
 {
     "name": "payment-customization",
     "version": "1.0.0",
+    "dependencies": {
+        "@shopify/shopify_function": "^0.0.3"
+    },
     "devDependencies": {
-        "@shopify/shopify_function": "^0.0.3",
         "@types/node": "^22.2.0",
         "typescript": "^5.2.2"
     },

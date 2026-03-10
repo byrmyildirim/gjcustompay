@@ -1,0 +1,57 @@
+schema {
+  query: QueryRoot
+}
+
+type QueryRoot {
+  cart: Cart!
+  paymentMethods: [PaymentMethod!]!
+  paymentCustomization: PaymentCustomization
+}
+
+type Cart {
+  lines: [CartLine!]!
+}
+
+type CartLine {
+  quantity: Int!
+  merchandise: Merchandise!
+}
+
+interface Merchandise {
+  __typename: String!
+}
+
+type ProductVariant implements Merchandise {
+  __typename: String!
+  product: Product!
+}
+
+type Product {
+  collections(first: Int!): CollectionConnection!
+}
+
+type CollectionConnection {
+  edges: [CollectionEdge!]!
+}
+
+type CollectionEdge {
+  node: Collection!
+}
+
+type Collection {
+  id: ID!
+  title: String!
+}
+
+type PaymentMethod {
+  id: ID!
+  name: String!
+}
+
+type PaymentCustomization {
+  metafield(namespace: String!, key: String!): Metafield
+}
+
+type Metafield {
+  value: String!
+}

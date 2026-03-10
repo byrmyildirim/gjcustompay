@@ -13,7 +13,7 @@ import {
     Banner,
     PageActions,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge, ResourcePicker } from "@shopify/app-bridge-react";
+import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -78,7 +78,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         }
     }
 
-    let existingConfig = {
+    let existingConfig: {
+        nutritionCollectionIds: string[];
+        sportsCollectionIds: string[];
+        paytrMethodName: string;
+        iyzicoMethodName: string;
+    } = {
         nutritionCollectionIds: [],
         sportsCollectionIds: [],
         paytrMethodName: "PayTR",
@@ -89,6 +94,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         try {
             existingConfig = { ...existingConfig, ...JSON.parse(customization.metafield.value) };
         } catch (e) {
+
             console.error("Config parsing error", e);
         }
     }
