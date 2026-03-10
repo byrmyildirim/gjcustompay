@@ -23,33 +23,36 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     let customization = null;
     let functionId = null;
 
-    // Mevcut özelleştirmelerden functionId'yi al (varsa)
+    // 1. Mevcut app installation üzerindeki function'ları sorgulayarak bu app'e ait function ID'yi bul
     try {
-        const existingResponse = await admin.graphql(
+        const appResponse = await admin.graphql(
             `#graphql
-            query GetExistingCustomizations {
-                paymentCustomizations(first: 5) {
-                    edges {
-                        node {
+            query GetAppFunctions {
+                currentAppInstallation {
+                    functions(first: 20) {
+                        nodes {
                             id
                             title
-                            enabled
-                            functionId
+                            apiType
                         }
                     }
                 }
             }`
         );
-        const existingJson = await existingResponse.json();
-        const firstNode = existingJson.data?.paymentCustomizations?.edges?.[0]?.node;
-        if (firstNode) {
-            functionId = firstNode.functionId;
+        const appJson = await appResponse.json();
+        const functions = appJson.data?.currentAppInstallation?.functions?.nodes || [];
+        // Bu uygulamanın sahip olduğu payment-customization tipindeki ilk function'ı alalım
+        const funcNode = functions.find((f: any) => f.apiType === "payment_customization");
+        if (funcNode) {
+            // Shopify Function ID usually needs the UUID part or the full GID depending on implementation
+            // But paymentCustomizationCreate mutation expects the UUID for the 'functionId' field
+            functionId = funcNode.id.split("/").pop();
         }
     } catch (e) {
-        console.error("Could not fetch existing customizations for functionId:", e);
+        console.error("Could not fetch app functions:", e);
     }
 
-    // Belirli bir kuralı düzenlemek istiyorsak detayını getir
+    // 2. Eğer id "new" değilse, kural detaylarını getir
     if (id && id !== "new") {
         try {
             const response = await admin.graphql(
@@ -94,7 +97,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         try {
             existingConfig = { ...existingConfig, ...JSON.parse(customization.metafield.value) };
         } catch (e) {
-
             console.error("Config parsing error", e);
         }
     }
@@ -121,74 +123,90 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         iyzicoMethodName,
     });
 
-    if (id === "new") {
-        const response = await admin.graphql(
-            `#graphql
-            mutation CreateCustomization($input: PaymentCustomizationInput!) {
-                paymentCustomizationCreate(paymentCustomization: $input) {
-                    paymentCustomization {
-                        id
+    try {
+        if (id === "new") {
+            const response = await admin.graphql(
+                `#graphql
+                mutation CreateCustomization($input: PaymentCustomizationInput!) {
+                    paymentCustomizationCreate(paymentCustomization: $input) {
+                        paymentCustomization {
+                            id
+                        }
+                        userErrors {
+                            field
+                            message
+                        }
                     }
-                    userErrors {
-                        field
-                        message
-                    }
-                }
-            }`,
-            {
-                variables: {
-                    input: {
-                        title,
-                        functionId,
-                        enabled: true,
-                        metafield: {
-                            namespace: "gj-custom-pay",
-                            key: "configuration",
-                            value: configuration,
-                            type: "json"
+                }`,
+                {
+                    variables: {
+                        input: {
+                            title,
+                            functionId,
+                            enabled: true,
+                            metafield: {
+                                namespace: "gj-custom-pay",
+                                key: "configuration",
+                                value: configuration,
+                                type: "json"
+                            }
                         }
                     }
                 }
+            );
+            const result = (await response.json()) as any;
+            
+            if (result.errors) {
+                console.error("GraphQL Errors:", JSON.stringify(result.errors, null, 2));
+                return json({ errors: result.errors }, { status: 400 });
             }
-        );
-        const result = await response.json();
-        const newId = result.data?.paymentCustomizationCreate?.paymentCustomization?.id;
-        if (newId) {
-            return redirect(`/app`);
+
+            const newId = result.data?.paymentCustomizationCreate?.paymentCustomization?.id;
+            if (newId) {
+                return redirect(`/app`);
+            }
+            return json(result);
+        } else {
+            const fullId = `gid://shopify/PaymentCustomization/${id}`;
+            const response = await admin.graphql(
+                `#graphql
+                mutation UpdateCustomization($id: ID!, $input: PaymentCustomizationInput!) {
+                    paymentCustomizationUpdate(id: $id, paymentCustomization: $input) {
+                        paymentCustomization {
+                            id
+                        }
+                        userErrors {
+                            field
+                            message
+                        }
+                    }
+                }`,
+                {
+                    variables: {
+                        id: fullId,
+                        input: {
+                            title,
+                            enabled: true,
+                            metafield: {
+                                namespace: "gj-custom-pay",
+                                key: "configuration",
+                                value: configuration,
+                                type: "json"
+                            }
+                        }
+                    }
+                }
+            );
+            const result = (await response.json()) as any;
+            if (result.errors) {
+                console.error("GraphQL Errors:", JSON.stringify(result.errors, null, 2));
+                return json({ errors: result.errors }, { status: 400 });
+            }
+            return json(result);
         }
-        return json(result);
-    } else {
-        const fullId = `gid://shopify/PaymentCustomization/${id}`;
-        const response = await admin.graphql(
-            `#graphql
-            mutation UpdateCustomization($id: ID!, $input: PaymentCustomizationInput!) {
-                paymentCustomizationUpdate(id: $id, paymentCustomization: $input) {
-                    paymentCustomization {
-                        id
-                    }
-                    userErrors {
-                        field
-                        message
-                    }
-                }
-            }`,
-            {
-                variables: {
-                    id: fullId,
-                    input: {
-                        title,
-                        enabled: true,
-                        metafield: {
-                            namespace: "gj-custom-pay",
-                            key: "configuration",
-                            value: configuration,
-                            type: "json"
-                        }
-                    }
-                }
-            }
-        );
-        return json(await response.json());
+    } catch (error: any) {
+        console.error("Action error:", error);
+        return json({ error: error.message }, { status: 500 });
     }
 };
 
