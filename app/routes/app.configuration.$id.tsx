@@ -28,19 +28,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         const appResponse = await admin.graphql(
             `#graphql
             query GetAppFunctions {
-                currentAppInstallation {
-                    functions(first: 20) {
-                        nodes {
-                            id
-                            title
-                            apiType
-                        }
+                shopifyFunctions(first: 20) {
+                    nodes {
+                        id
+                        title
+                        apiType
                     }
                 }
             }`
         );
-        const appJson = await appResponse.json();
-        const functions = appJson.data?.currentAppInstallation?.functions?.nodes || [];
+        const appJson = (await appResponse.json()) as any;
+        const functions = appJson.data?.shopifyFunctions?.nodes || [];
         // Bu uygulamanın sahip olduğu payment-customization tipindeki ilk function'ı alalım
         const funcNode = functions.find((f: any) => f.apiType === "payment_customization");
         if (funcNode) {
