@@ -5,7 +5,7 @@
         "@shopify/shopify_function": "^0.0.3"
     },
     "devDependencies": {
-        "@types/node": "^22.2.0",
+        "@types/node": "^25.3.0",
         "typescript": "^5.2.2"
     },
     "scripts": {
